@@ -9,6 +9,7 @@ output: github_document
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(purrr)
+library(modelr)
 ```
 
 ## Problem 2
@@ -69,3 +70,76 @@ results|>pull(quantity2)|>na.omit()|>quantile(0.975)
 ```
 
 The confidence interval for the first quantity is [`r c(results|>pull(r.squared)|>quantile(0.025),results|>pull(r.squared)|>quantile(0.975))`], and the confidence interval for the second quantity is [`r c(results|>pull(quantity2)|>na.omit()|>quantile(0.025),results|>pull(quantity2)|>na.omit()|>quantile(0.975))`]. NAs are omitted.
+
+
+## Problem 3
+```{r}
+data3=read.csv("data/birthweight.csv")|>
+  mutate(babysex=recode(babysex,"1"="male","2"="female"),
+         mrace=recode(mrace,"1" = "White", "2" = "Black", "3" = "Asian", '4' = "Puerto Rican", "8" = "Other"),
+         frace=recode(frace,"1" = "White", "2" = "Black", "3" = "Asian", '4' = "Puerto Rican", '8' = "Other", "9" ="Unknown"))|>
+  drop_na()
+```
+
+### fit the model
+It's reasonable to think that child's weight is directly relative to mom's body index and health condition, gestational age and the the income, so I include all of those variables into the model. Then delete those variables which are not significant. 
+```{r}
+fit=lm(bwt~fincome+gaweeks+malform+momage+mrace+ppbmi+smoken+wtgain,data3)
+summary(fit)
+
+fit=lm(bwt~fincome+gaweeks+mrace+ppbmi+smoken+wtgain,data3)
+summary(fit)
+```
+
+```{r}
+results_data=modelr::add_residuals(data3, fit)|>modelr::add_predictions(fit)
+
+results_data|>ggplot(aes(x=pred,y=resid))+geom_point()
+```
+
+There is no heteroscedasticity according to the graph.
+
+```{r}
+fit1=lm(bwt~gaweeks+blength,data3)
+summary(fit1)
+fit2=lm(bwt~bhead*blength*babysex,data3)
+summary(fit2)
+```
+
+```{r}
+cv_df = 
+  crossv_mc(data3, 100) 
+
+cv_df =
+  cv_df |> 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble))
+```
+
+```{r}
+cv_df = 
+  cv_df |> 
+  mutate(
+    mod1  = map(train, \(df) lm(bwt~fincome+gaweeks+mrace+ppbmi+smoken+wtgain,df)),
+    mod2  = map(train, \(df) lm(bwt~gaweeks+blength,df)),
+    mod3  = map(train, \(df) lm(bwt~bhead*blength*babysex,df))) |> 
+  mutate(
+    rmse_mod1 = map2_dbl(mod1, test, \(mod, df) rmse(model = mod, data = df)),
+    rmse_mod2 = map2_dbl(mod2, test, \(mod, df) rmse(model = mod, data = df)),
+    rmse_mod3 = map2_dbl(mod3, test, \(mod, df) rmse(model = mod, data = df)))
+```
+
+```{r}
+cv_df |> 
+  select(starts_with("rmse")) |> 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") |> 
+  mutate(model = fct_inorder(model)) |> 
+  ggplot(aes(x = model, y = rmse)) + geom_violin()
+```
+
+Since my model does not contain baby's body index, the prediction is not so efficient as two others. Model using head circumference, length, sex, and all interactions is the optimal one. 
