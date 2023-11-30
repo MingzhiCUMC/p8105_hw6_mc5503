@@ -148,7 +148,7 @@ data3=read.csv("data/birthweight.csv")|>
 It's reasonable to think that child's weight is directly relative to mom's body index and health condition, gestational age and the the income, so I include all of those variables into the model. Then delete those variables which are not significant. 
 ```{r}
 fit=lm(bwt~fincome+gaweeks+malform+momage+mrace+ppbmi+smoken+wtgain,data3)
-summary(fit)
+broom::tidy(fit)
 
 fit=lm(bwt~fincome+gaweeks+mrace+ppbmi+smoken+wtgain,data3)
 broom::tidy(fit)
